@@ -725,7 +725,8 @@ async function previewImage(fileEntry){
 async function downloadFile(fileEntry){
   const{pat,key,username}=session;
   const chunks=fileEntry.chunks||[];
-  const allData=[];let totalDecrypted=0;
+  // Collect decrypted chunks as separate Uint8Arrays — never merge into one giant buffer
+  const decryptedChunks=[];
   showModal(`<h3>Downloading ${escHtml(fileEntry.name)}</h3><div class="upload-progress-bar" style="margin:1rem 0"><div class="upload-progress-fill" id="dl-fill" style="width:0%"></div></div><div id="dl-stat" style="font-size:0.8rem;color:var(--text3)">Starting...</div>`);
   try{
     const sorted=[...chunks].sort((a,b)=>a.chunkIndex-b.chunkIndex);
@@ -734,12 +735,11 @@ async function downloadFile(fileEntry){
       document.getElementById('dl-stat').textContent=`Chunk ${i+1}/${sorted.length}...`;
       const encBytes=await ghGetFileRaw(username,chunk.repoName,chunk.filename,pat);
       const decBytes=await decryptData(encBytes,key);
-      allData.push(decBytes);totalDecrypted+=decBytes.length;
+      decryptedChunks.push(decBytes);
       document.getElementById('dl-fill').style.width=Math.round(((i+1)/sorted.length)*100)+'%';
     }
-    const merged=new Uint8Array(totalDecrypted);let offset=0;
-    for(const c of allData){merged.set(c,offset);offset+=c.length}
-    const blob=new Blob([merged],{type:fileEntry.mimeType||'application/octet-stream'});
+    // Pass the array of chunks directly to Blob — no merging, no 2GB limit
+    const blob=new Blob(decryptedChunks,{type:fileEntry.mimeType||'application/octet-stream'});
     const url=URL.createObjectURL(blob);
     const a=document.createElement('a');a.href=url;a.download=fileEntry.name;a.click();
     URL.revokeObjectURL(url);
